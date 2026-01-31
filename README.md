@@ -1,8 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## MoodFlow
+
+“今のあなたに、ちょうどいいタスクを。”
+
+ユーザーの気分と未完了タスクから、Gemini API が「今やるタスク」を提案する簡易タスク管理アプリです。
 
 ## Getting Started
 
-First, run the development server:
+### 1) Install
+
+```bash
+npm install
+```
+
+### 2) Configure env
+
+- Copy `.env.example` to `.env.local`
+- Set `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+
+### 3) Create database table (Supabase)
+
+- Run `Doc/supabase.sql` in the Supabase SQL editor
+
+### 4) Run
+
+Run the development server:
 
 ```bash
 npm run dev
@@ -14,11 +35,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open [http://localhost:3000](http://localhost:3000) with your browser.
 
 ## Learn More
 
