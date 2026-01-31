@@ -19,6 +19,7 @@ export default function MoodFlowApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [includeCompleted, setIncludeCompleted] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -31,6 +32,8 @@ export default function MoodFlowApp() {
   const [loadingRecommend, setLoadingRecommend] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [isIncompleteOpen, setIsIncompleteOpen] = useState(true);
+  const [isCompletedOpen, setIsCompletedOpen] = useState(true);
 
   const incompleteTasks = useMemo(
     () => tasks.filter((t) => !t.is_completed),
@@ -64,6 +67,38 @@ export default function MoodFlowApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    try {
+      const readBool = (key: string, fallback: boolean): boolean => {
+        const value = localStorage.getItem(key);
+        if (value === null) return fallback;
+        return value === "1";
+      };
+      setIsIncompleteOpen(readBool("moodflow.ui.incompleteOpen", true));
+      setIsCompletedOpen(readBool("moodflow.ui.completedOpen", true));
+    } catch {
+      // ignore
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        "moodflow.ui.incompleteOpen",
+        isIncompleteOpen ? "1" : "0",
+      );
+      localStorage.setItem(
+        "moodflow.ui.completedOpen",
+        isCompletedOpen ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  }, [hydrated, isIncompleteOpen, isCompletedOpen]);
+
   async function createTask(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -89,6 +124,7 @@ export default function MoodFlowApp() {
       setEnergyLevel("");
 
       await refreshTasks();
+      setIsIncompleteOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     }
@@ -137,6 +173,9 @@ export default function MoodFlowApp() {
       }>(res);
       if (!res.ok) throw new Error(data.error || "Failed to get recommendations");
       setRecommendations(data.recommendations ?? []);
+      if ((data.recommendations ?? []).length > 0) {
+        setIsIncompleteOpen(true);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -268,92 +307,49 @@ export default function MoodFlowApp() {
             </form>
 
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-                未完了（{incompleteTasks.length}）
-              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  aria-expanded={isIncompleteOpen}
+                  aria-controls="tasks-incomplete"
+                  onClick={() => setIsIncompleteOpen((v) => !v)}
+                >
+                  <span className="w-4 text-center">
+                    {isIncompleteOpen ? "▼" : "▶"}
+                  </span>
+                  未完了
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                    {incompleteTasks.length}
+                  </span>
+                </button>
+              </div>
               {loadingTasks ? (
                 <span className="text-xs text-zinc-500">読み込み中...</span>
               ) : null}
             </div>
 
-            <ul className="mt-2 grid gap-2">
-              {tasks
-                .filter((t) => !t.is_completed)
-                .map((t) => {
-                  const reason = recommendedById.get(t.id) ?? null;
-                  return (
-                    <li
-                      key={t.id}
-                      className={[
-                        "rounded-lg border px-3 py-2",
-                        reason
-                          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30"
-                          : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="mt-1 h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
-                              checked={t.is_completed}
-                              onChange={(e) =>
-                                void setCompleted(t.id, e.target.checked)
-                              }
-                            />
-                            <p className="truncate text-sm font-medium">
-                              {t.title}
-                            </p>
-                          </div>
-                          {t.description ? (
-                            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                              {t.description}
-                            </p>
-                          ) : null}
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                            {t.estimated_time ? (
-                              <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-zinc-900">
-                                {t.estimated_time}分
-                              </span>
-                            ) : null}
-                            {t.energy_level ? (
-                              <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-zinc-900">
-                                エネルギー {t.energy_level}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
-                          onClick={() => void deleteTask(t.id)}
-                        >
-                          削除
-                        </button>
-                      </div>
-                      {reason ? (
-                        <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-200">
-                          AIおすすめ: {reason}
-                        </p>
-                      ) : null}
-                    </li>
-                  );
-                })}
-            </ul>
-
-            {includeCompleted ? (
-              <>
-                <h3 className="mt-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-                  完了
-                </h3>
-                <ul className="mt-2 grid gap-2">
-                  {tasks
-                    .filter((t) => t.is_completed)
-                    .map((t) => (
+            <div
+              id="tasks-incomplete"
+              className={[
+                "overflow-hidden transition-[max-height,opacity] duration-200",
+                isIncompleteOpen ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0",
+              ].join(" ")}
+            >
+              <ul className="mt-2 grid gap-2">
+                {tasks
+                  .filter((t) => !t.is_completed)
+                  .map((t) => {
+                    const reason = recommendedById.get(t.id) ?? null;
+                    return (
                       <li
                         key={t.id}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950"
+                        className={[
+                          "rounded-lg border px-3 py-2",
+                          reason
+                            ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30"
+                            : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+                        ].join(" ")}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -366,9 +362,26 @@ export default function MoodFlowApp() {
                                   void setCompleted(t.id, e.target.checked)
                                 }
                               />
-                              <p className="truncate text-sm text-zinc-500 line-through dark:text-zinc-500">
+                              <p className="truncate text-sm font-medium">
                                 {t.title}
                               </p>
+                            </div>
+                            {t.description ? (
+                              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                                {t.description}
+                              </p>
+                            ) : null}
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                              {t.estimated_time ? (
+                                <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-zinc-900">
+                                  {t.estimated_time}分
+                                </span>
+                              ) : null}
+                              {t.energy_level ? (
+                                <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-zinc-900">
+                                  エネルギー {t.energy_level}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           <button
@@ -379,9 +392,82 @@ export default function MoodFlowApp() {
                             削除
                           </button>
                         </div>
+                        {reason ? (
+                          <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-200">
+                            AIおすすめ: {reason}
+                          </p>
+                        ) : null}
                       </li>
-                    ))}
-                </ul>
+                    );
+                  })}
+              </ul>
+            </div>
+
+            {includeCompleted ? (
+              <>
+                <div className="mt-4 flex items-center justify-between">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    aria-expanded={isCompletedOpen}
+                    aria-controls="tasks-completed"
+                    onClick={() => setIsCompletedOpen((v) => !v)}
+                  >
+                    <span className="w-4 text-center">
+                      {isCompletedOpen ? "▼" : "▶"}
+                    </span>
+                    完了
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                      {tasks.filter((t) => t.is_completed).length}
+                    </span>
+                  </button>
+                </div>
+
+                <div
+                  id="tasks-completed"
+                  className={[
+                    "overflow-hidden transition-[max-height,opacity] duration-200",
+                    isCompletedOpen
+                      ? "max-h-[2000px] opacity-100"
+                      : "max-h-0 opacity-0",
+                  ].join(" ")}
+                >
+                  <ul className="mt-2 grid gap-2">
+                    {tasks
+                      .filter((t) => t.is_completed)
+                      .map((t) => (
+                        <li
+                          key={t.id}
+                          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
+                                  checked={t.is_completed}
+                                  onChange={(e) =>
+                                    void setCompleted(t.id, e.target.checked)
+                                  }
+                                />
+                                <p className="truncate text-sm text-zinc-500 line-through dark:text-zinc-500">
+                                  {t.title}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                              onClick={() => void deleteTask(t.id)}
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
               </>
             ) : null}
           </section>
