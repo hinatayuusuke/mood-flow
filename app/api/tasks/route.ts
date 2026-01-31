@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { estimateTaskMeta } from "@/lib/aiEstimate";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Task } from "@/lib/types";
 
@@ -50,6 +51,28 @@ export async function POST(req: Request) {
       typeof body.description === "string" ? body.description.trim() : null;
     const estimated_time = toIntOrNull(body.estimated_time);
     const energy_level = toIntOrNull(body.energy_level);
+    const auto_estimate =
+      typeof body.auto_estimate === "boolean" ? body.auto_estimate : true;
+
+    let finalEstimatedTime = estimated_time;
+    let finalEnergyLevel = energy_level;
+
+    if (
+      auto_estimate &&
+      (finalEstimatedTime === null || finalEnergyLevel === null)
+    ) {
+      try {
+        const estimate = await estimateTaskMeta({ title, description });
+        if (finalEstimatedTime === null) {
+          finalEstimatedTime = estimate.estimated_time;
+        }
+        if (finalEnergyLevel === null) {
+          finalEnergyLevel = estimate.energy_level;
+        }
+      } catch {
+        // If AI fails (missing key, timeout, invalid JSON...), keep nulls and still create the task.
+      }
+    }
 
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
@@ -57,8 +80,8 @@ export async function POST(req: Request) {
       .insert({
         title,
         description,
-        estimated_time,
-        energy_level,
+        estimated_time: finalEstimatedTime,
+        energy_level: finalEnergyLevel,
         is_completed: false,
       })
       .select("*")
@@ -74,4 +97,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

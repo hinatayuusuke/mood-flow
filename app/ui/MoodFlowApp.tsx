@@ -24,6 +24,7 @@ export default function MoodFlowApp() {
   const [description, setDescription] = useState("");
   const [estimatedTime, setEstimatedTime] = useState<string>("");
   const [energyLevel, setEnergyLevel] = useState<string>("");
+  const [autoEstimate, setAutoEstimate] = useState(true);
 
   const [mood, setMood] = useState("");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -72,6 +73,7 @@ export default function MoodFlowApp() {
         description,
         estimated_time: estimatedTime,
         energy_level: energyLevel,
+        auto_estimate: autoEstimate,
       };
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -217,6 +219,7 @@ export default function MoodFlowApp() {
                     onChange={(e) => setEstimatedTime(e.target.value)}
                     className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-800 dark:bg-zinc-950"
                     placeholder="例: 15"
+                    disabled={autoEstimate}
                   />
                 </div>
                 <div className="grid gap-2">
@@ -228,6 +231,7 @@ export default function MoodFlowApp() {
                     value={energyLevel}
                     onChange={(e) => setEnergyLevel(e.target.value)}
                     className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-800 dark:bg-zinc-950"
+                    disabled={autoEstimate}
                   >
                     <option value="">未設定</option>
                     <option value="1">低（気軽）</option>
@@ -236,6 +240,23 @@ export default function MoodFlowApp() {
                   </select>
                 </div>
               </div>
+
+              <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
+                  checked={autoEstimate}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setAutoEstimate(next);
+                    if (next) {
+                      setEstimatedTime("");
+                      setEnergyLevel("");
+                    }
+                  }}
+                />
+                目安/エネルギーをAIで推定する
+              </label>
 
               <button
                 type="submit"
