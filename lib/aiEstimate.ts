@@ -82,7 +82,10 @@ export async function estimateTaskMeta(input: {
   const genAI = new GoogleGenerativeAI(getRequiredEnv("GEMINI_API_KEY"));
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
-    generationConfig: { responseMimeType: "application/json" },
+    generationConfig: {
+      responseMimeType: "application/json",
+      maxOutputTokens: 512,
+    },
   });
 
   const prompt = [
@@ -122,4 +125,3 @@ export async function estimateTaskMeta(input: {
 
   return normalized;
 }
-

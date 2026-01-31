@@ -53,7 +53,7 @@ function safeParseJson(text: string): unknown {
 function normalizeRecommendations(
   raw: unknown,
   validTaskIds: ReadonlySet<string>,
-  tasksInOrder: ReadonlyArray<{ id: string }>,
+  tasksInOrder: ReadonlyArray<{ id: string; title: string }>,
 ): RecommendResponse {
   if (!raw || typeof raw !== "object") {
     throw new Error("AI response is not an object");
@@ -71,6 +71,14 @@ function normalizeRecommendations(
     if (!item || typeof item !== "object") continue;
     const recObj = item as Record<string, unknown>;
 
+    // Prefer ordinal selection (taskNo) to avoid the model inventing or misusing IDs.
+    const maybeOrdinal =
+      toFiniteNumber(recObj.taskNo) ??
+      toFiniteNumber(recObj.task_no) ??
+      toFiniteNumber(recObj.ordinal) ??
+      toFiniteNumber(recObj.index) ??
+      toFiniteNumber(recObj.rank);
+
     const taskIdCandidateRaw =
       toNonEmptyString(recObj.taskId) ||
       toNonEmptyString(recObj.taskID) ||
@@ -86,18 +94,22 @@ function normalizeRecommendations(
       toNonEmptyString(recObj.message) ||
       toNonEmptyString(recObj.comment);
 
-    if (!taskIdCandidateRaw || !reasonCandidate) continue;
+    if (!reasonCandidate) continue;
 
     let taskId = taskIdCandidateRaw;
+
+    if (maybeOrdinal !== null) {
+      const idx = Math.trunc(maybeOrdinal) - 1;
+      if (idx >= 0 && idx < tasksInOrder.length) {
+        taskId = tasksInOrder[idx]?.id ?? taskId;
+      }
+    }
+
+    if (!taskId) continue;
 
     // If the model returns a 1-based ordinal like `1`, map it back to the real UUID id.
     if (!validTaskIds.has(taskId)) {
       const maybeOrdinal =
-        toFiniteNumber(recObj.taskNo) ??
-        toFiniteNumber(recObj.task_no) ??
-        toFiniteNumber(recObj.ordinal) ??
-        toFiniteNumber(recObj.index) ??
-        toFiniteNumber(recObj.rank) ??
         toFiniteNumber(recObj.taskId) ??
         toFiniteNumber(recObj.id);
 
@@ -111,7 +123,13 @@ function normalizeRecommendations(
 
     if (!validTaskIds.has(taskId)) continue;
 
-    normalized.push({ taskId, reason: reasonCandidate });
+    const matchedTask = tasksInOrder.find((t) => t.id === taskId) ?? null;
+    const titlePrefix = matchedTask ? `【${matchedTask.title}】` : "";
+    const reason = reasonCandidate.startsWith(titlePrefix)
+      ? reasonCandidate
+      : `${titlePrefix}${reasonCandidate}`;
+
+    normalized.push({ taskId, reason });
     if (normalized.length >= 3) break;
   }
 
@@ -154,8 +172,11 @@ export async function POST(req: Request) {
 
     const genAI = new GoogleGenerativeAI(getRequiredEnv("GEMINI_API_KEY"));
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      generationConfig: { responseMimeType: "application/json" },
+      model: "gemini-2.5-flash-lite",
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 512,
+      },
     });
 
     const tasksForPrompt = tasks.map((t) => ({
@@ -182,9 +203,10 @@ export async function POST(req: Request) {
       "# 制約条件",
       "- JSON形式のみを出力すること（前後に文章を付けない）。",
       "- `recommendations` 配列の中にオブジェクトを入れること。",
-      "- 各オブジェクトには `taskId` と `reason`（おすすめ理由＋励ましの一言）を含めること。",
-      "- `taskId` は必ず、タスクリストに含まれる `id` をそのまま使うこと（新しいIDを作らない）。",
+      "- 各オブジェクトには `taskNo` と `reason`（おすすめ理由＋励ましの一言）を含めること。",
+      "- `taskNo` は必ず、タスクリストに付いている`no`をそのまま使うこと。",
       "- ユーザーの気分が落ち込んでいる時は簡単/短時間のタスクを、やる気がある時は重めのタスクを優先すること。",
+      "- reason は必ず、選んだタスクの title を先頭に含めること（例: 「【メール返信】…」）。",
       "",
       "# ユーザーの気分",
       JSON.stringify(mood),
@@ -200,8 +222,7 @@ export async function POST(req: Request) {
       "# 出力スキーマ（例）",
       JSON.stringify({
         recommendations: [
-          { taskId: "uuid", reason: "理由（励ましの言葉を含めて）" },
-          { taskNo: 1, reason: "（taskIdが難しい場合は taskNo でもOK）" },
+          { taskNo: 1, reason: "【タスクのtitle】理由（励ましの言葉を含めて）" },
         ],
       }),
     ].join("\n");
